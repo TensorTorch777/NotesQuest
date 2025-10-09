@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@types/react-transition-group": "^4.4.12",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "react-router-dom": "^7.9.4",
     "react-transition-group": "^4.4.5"
   },
