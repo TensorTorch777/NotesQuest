@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 import bgImage from '../assets/bg.jpg';
 import backendAPI from '../services/backendApi';
 
@@ -430,6 +431,44 @@ export default function Chat() {
     return d.toLocaleDateString();
   };
 
+  // Markdown renderer with styling for headings and bold
+  const Markdown = ({ content }) => (
+    <ReactMarkdown
+      components={{
+        h1: ({ node, ...props }) => (
+          <h1 className="text-3xl md:text-4xl font-bold text-white mb-3" {...props} />
+        ),
+        h2: ({ node, ...props }) => (
+          <h2 className="text-2xl md:text-3xl font-bold text-white mb-2" {...props} />
+        ),
+        h3: ({ node, ...props }) => (
+          <h3 className="text-xl md:text-2xl font-bold text-white mb-2" {...props} />
+        ),
+        strong: ({ node, ...props }) => (
+          <strong className="font-extrabold text-white" {...props} />
+        ),
+        p: ({ node, ...props }) => (
+          <p className="leading-relaxed text-gray-200 mb-2" {...props} />
+        ),
+        li: ({ node, ordered, ...props }) => (
+          <li className="ml-4 list-disc" {...props} />
+        ),
+        ul: ({ node, ...props }) => (
+          <ul className="space-y-1" {...props} />
+        ),
+        code: ({ inline, ...props }) => (
+          inline ? (
+            <code className="px-1 py-0.5 bg-white/10 rounded text-white" {...props} />
+          ) : (
+            <code className="block p-3 bg-white/10 rounded text-white whitespace-pre-wrap" {...props} />
+          )
+        )
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+
   return (
     <div className="min-h-screen relative overflow-hidden flex">
       {/* Background Image with Overlay */}
@@ -617,7 +656,13 @@ export default function Chat() {
                         : 'backdrop-blur-xl bg-white/10 text-white border border-white/20'
                     }`}
                   >
-                    <div className="whitespace-pre-wrap break-words leading-relaxed">{message.content}</div>
+                    {message.role === 'assistant' ? (
+                      <div className="prose prose-invert max-w-none">
+                        <Markdown content={message.content} />
+                      </div>
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words leading-relaxed">{message.content}</div>
+                    )}
                   </div>
                   {message.role === 'user' && (
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-600 to-gray-700 flex items-center justify-center flex-shrink-0 mt-1">
@@ -653,8 +698,8 @@ export default function Chat() {
                   <span className="material-symbols-outlined text-sm text-white">smart_toy</span>
                 </div>
                 <div className="max-w-[85%] rounded-2xl px-4 py-3 shadow-sm backdrop-blur-xl bg-white/10 text-white border border-white/20">
-                  <div className="whitespace-pre-wrap break-words leading-relaxed">
-                    {streamingMessage}
+                  <div className="prose prose-invert max-w-none">
+                    <Markdown content={streamingMessage} />
                     <span className="inline-block w-2 h-4 bg-blue-400 ml-1 animate-pulse">|</span>
                   </div>
                 </div>
