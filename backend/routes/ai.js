@@ -1,3 +1,4 @@
+// backend/routes/ai.js
 const router = require("express").Router();
 const ai = require("../aiClient");
 const Document = require("../models/Document");
@@ -6,15 +7,22 @@ const Quiz = require("../models/Quiz");
 const Flashcard = require("../models/Flashcard");
 const Chat = require("../models/Chat");
 
+// Use global fetch (Node 18+) or lazy-import node-fetch as fallback
+const _fetch =
+  (typeof fetch !== "undefined" && fetch) ||
+  (async (...args) => (await import("node-fetch")).default(...args));
+
 router.post("/generate-summary", async (req, res) => {
   try {
     const { documentId, content, title } = req.body || {};
-    console.log(`📥 Generate summary request - documentId: ${documentId}, hasContent: ${!!content}, hasTitle: ${!!title}`);
-    
+    console.log(
+      `📥 Generate summary request - documentId: ${documentId}, hasContent: ${!!content}, hasTitle: ${!!title}`
+    );
+
     let actualContent = content;
     let actualTitle = title;
     let docId = documentId;
-    
+
     // If documentId is provided, fetch the document
     if (documentId && !actualContent) {
       console.log(`📄 Fetching document ${documentId}...`);
@@ -26,7 +34,7 @@ router.post("/generate-summary", async (req, res) => {
       actualTitle = doc.title;
       docId = doc._id; // Use the ObjectId from DB
     }
-    
+
     if (!actualContent || typeof actualContent !== "string" || actualContent.length < 20) {
       return res.status(400).json({ error: "content must be a non-empty string (>=20 chars)" });
     }
@@ -37,13 +45,15 @@ router.post("/generate-summary", async (req, res) => {
       return res.status(413).json({ error: "Document too large. Please split and try again." });
     }
 
-    console.log(`📤 Calling AI service: ${process.env.AI_SERVICE_URL || "http://127.0.0.1:8000"}/generate/summary`);
+    console.log(
+      `📤 Calling AI service: ${process.env.AI_SERVICE_URL || "http://127.0.0.1:8000"}/generate/summary`
+    );
     console.log(`📏 Content length: ${actualContent.length} chars, title: "${actualTitle}"`);
-    
+
     const r = await ai.post("/generate/summary", { content: actualContent, title: actualTitle });
-    
+
     console.log(`📥 AI service response: status=${r.status}`);
-    
+
     if (r.status >= 200 && r.status < 300) {
       // Persist summary
       try {
@@ -57,30 +67,34 @@ router.post("/generate-summary", async (req, res) => {
           const saved = await Summary.create({
             documentId: docId,
             userId: null,
-            content: payload?.content || payload?.data || '',
+            content: payload?.content || payload?.data || "",
             maxLength: 500,
-            model: payload?.model || 'Qwen2.5-7B-Instruct'
+            model: payload?.model || "Qwen2.5-7B-Instruct",
           });
-          console.log(`✅ Summary saved successfully with _id: ${saved._id}, documentId: ${saved.documentId}`);
+          console.log(
+            `✅ Summary saved successfully with _id: ${saved._id}, documentId: ${saved.documentId}`
+          );
         } else {
           console.warn(`⚠️ No documentId available to save summary for title: ${actualTitle}`);
         }
-      } catch (e) { console.error('⚠️ Failed to save summary:', e?.message, e?.stack); }
+      } catch (e) {
+        console.error("⚠️ Failed to save summary:", e?.message, e?.stack);
+      }
       return res.json(r.data);
     }
-    
+
     // Log detailed error for debugging
     console.error("❌ AI service error:", {
       status: r.status,
       statusText: r.statusText,
       data: r.data,
-      headers: r.headers
+      headers: r.headers,
     });
-    
-    return res.status(502).json({ 
-      error: "AI service error", 
+
+    return res.status(502).json({
+      error: "AI service error",
       status: r.status,
-      detail: r.data?.detail || r.data?.message || JSON.stringify(r.data)
+      detail: r.data?.detail || r.data?.message || JSON.stringify(r.data),
     });
   } catch (err) {
     console.error("❌ Backend error:", err);
@@ -91,15 +105,17 @@ router.post("/generate-summary", async (req, res) => {
 router.post("/generate-quiz", async (req, res) => {
   console.log("🎯 /generate-quiz endpoint hit!");
   console.log("Request body:", req.body);
-  
+
   try {
     const { documentId, content, title, numQuestions } = req.body || {};
-    console.log(`📥 Generate quiz request - documentId: ${documentId}, hasContent: ${!!content}, hasTitle: ${!!title}`);
-    
+    console.log(
+      `📥 Generate quiz request - documentId: ${documentId}, hasContent: ${!!content}, hasTitle: ${!!title}`
+    );
+
     let actualContent = content;
     let actualTitle = title;
     let docId = documentId;
-    
+
     // If documentId is provided, fetch the document
     if (documentId && !actualContent) {
       console.log(`📄 Fetching document ${documentId}...`);
@@ -111,9 +127,9 @@ router.post("/generate-quiz", async (req, res) => {
       actualTitle = doc.title;
       docId = doc._id; // Use the ObjectId from DB
     }
-    
+
     console.log(`📊 Full document received: ${actualContent.length} chars`);
-    
+
     if (!actualContent || typeof actualContent !== "string" || actualContent.length < 20) {
       return res.status(400).json({ error: "content must be a non-empty string (>=20 chars)" });
     }
@@ -123,23 +139,26 @@ router.post("/generate-quiz", async (req, res) => {
 
     console.log(`📤 Calling AI service for quiz...`);
     console.log(`📏 Content length: ${actualContent.length} chars, title: "${actualTitle}"`);
-    
+
     try {
       // Calculate appropriate number of questions based on document length
       const questionsPer10kChars = 3; // 3 questions per 10k characters
-      const calculatedQuestions = Math.max(8, Math.min(30, Math.floor(actualContent.length / 10000 * questionsPer10kChars)));
+      const calculatedQuestions = Math.max(
+        8,
+        Math.min(30, Math.floor((actualContent.length / 10000) * questionsPer10kChars))
+      );
       const numQuestionsToGenerate = numQuestions || calculatedQuestions;
-      
+
       console.log(`📝 Generating ${numQuestionsToGenerate} questions from ${actualContent.length} chars`);
-      
-      const r = await ai.post("/generate/quiz", { 
-        content: actualContent, 
+
+      const r = await ai.post("/generate/quiz", {
+        content: actualContent,
         title: actualTitle,
-        num_questions: numQuestionsToGenerate
+        num_questions: numQuestionsToGenerate,
       });
-      
+
       console.log(`📥 AI service response: status=${r.status}, data keys:`, Object.keys(r.data || {}));
-      
+
       if (r.status >= 200 && r.status < 300) {
         // Persist quiz
         try {
@@ -153,18 +172,22 @@ router.post("/generate-quiz", async (req, res) => {
             const saved = await Quiz.create({
               documentId: docId,
               userId: null,
-              questionsText: payload?.questions || '',
+              questionsText: payload?.questions || "",
               numQuestions: payload?.num_questions || payload?.numQuestions || 0,
-              model: 'Qwen2.5-7B-Instruct'
+              model: "Qwen2.5-7B-Instruct",
             });
-            console.log(`✅ Quiz saved successfully with _id: ${saved._id}, documentId: ${saved.documentId}`);
+            console.log(
+              `✅ Quiz saved successfully with _id: ${saved._id}, documentId: ${saved.documentId}`
+            );
           } else {
             console.warn(`⚠️ No documentId available to save quiz for title: ${actualTitle}`);
           }
-        } catch (e) { console.error('⚠️ Failed to save quiz:', e?.message, e?.stack); }
+        } catch (e) {
+          console.error("⚠️ Failed to save quiz:", e?.message, e?.stack);
+        }
         return res.json(r.data);
       }
-      
+
       console.error("❌ AI service error:", r.data);
       return res.status(502).json({ error: "AI service error", detail: r.data?.detail });
     } catch (aiErr) {
@@ -180,12 +203,14 @@ router.post("/generate-quiz", async (req, res) => {
 router.post("/generate-flashcards", async (req, res) => {
   try {
     const { documentId, content, title, numCards } = req.body || {};
-    console.log(`📥 Generate flashcards request - documentId: ${documentId}, hasContent: ${!!content}, hasTitle: ${!!title}`);
-    
+    console.log(
+      `📥 Generate flashcards request - documentId: ${documentId}, hasContent: ${!!content}, hasTitle: ${!!title}`
+    );
+
     let actualContent = content;
     let actualTitle = title;
     let docId = documentId;
-    
+
     if (documentId && !actualContent) {
       console.log(`📄 Fetching document ${documentId}...`);
       const doc = await Document.findById(documentId);
@@ -196,24 +221,29 @@ router.post("/generate-flashcards", async (req, res) => {
       actualTitle = doc.title;
       docId = doc._id; // Use the ObjectId from DB
     }
-    
+
     if (!actualContent || typeof actualContent !== "string" || actualContent.length < 20) {
       return res.status(400).json({ error: "content must be a non-empty string (>=20 chars)" });
     }
 
     console.log(`📤 Calling AI service for flashcards...`);
-    
-    const r = await ai.post("/generate/flashcards", { 
-      content: actualContent, 
+
+    const r = await ai.post("/generate/flashcards", {
+      content: actualContent,
       title: actualTitle,
-      num_cards: numCards || 12
+      num_cards: numCards || 12,
     });
-    
+
     if (r.status >= 200 && r.status < 300) {
       // Persist flashcards
       try {
         const payload = r.data?.data || r.data;
-        const cards = (payload?.flashcards || []).map(c => ({ front: c.term || c.front, back: c.definition || c.back, category: c.category || 'General', difficulty: c.difficulty || 'easy' }));
+        const cards = (payload?.flashcards || []).map((c) => ({
+          front: c.term || c.front,
+          back: c.definition || c.back,
+          category: c.category || "General",
+          difficulty: c.difficulty || "easy",
+        }));
         if (!docId) {
           const found = await Document.findOne({ title: actualTitle }).sort({ createdAt: -1 });
           docId = found?._id;
@@ -225,16 +255,20 @@ router.post("/generate-flashcards", async (req, res) => {
             userId: null,
             cards,
             numCards: cards.length,
-            model: 'Qwen2.5-7B-Instruct'
+            model: "Qwen2.5-7B-Instruct",
           });
-          console.log(`✅ Flashcards saved successfully with _id: ${saved._id}, documentId: ${saved.documentId}`);
+          console.log(
+            `✅ Flashcards saved successfully with _id: ${saved._id}, documentId: ${saved.documentId}`
+          );
         } else {
           console.warn(`⚠️ No documentId available to save flashcards for title: ${actualTitle}`);
         }
-      } catch (e) { console.error('⚠️ Failed to save flashcards:', e?.message, e?.stack); }
+      } catch (e) {
+        console.error("⚠️ Failed to save flashcards:", e?.message, e?.stack);
+      }
       return res.json(r.data);
     }
-    
+
     return res.status(502).json({ error: "AI service error", detail: r.data?.detail });
   } catch (err) {
     console.error("❌ Backend error:", err);
@@ -242,83 +276,88 @@ router.post("/generate-flashcards", async (req, res) => {
   }
 });
 
-// Chat endpoints (must be before dynamic routes)
+/* ============================
+   CHAT ENDPOINTS
+   ============================ */
 
-// Get all chats for user (no auth required for now - allow null userId)
-router.get('/chats', async (req, res) => {
+// Get all chats
+router.get("/chats", async (req, res) => {
   try {
     const userId = req.user?.id || null;
-    // Query for chats where userId matches (null for unauthenticated users)
     const query = userId ? { userId: userId } : { userId: null };
     console.log(`📋 Fetching chats with query:`, JSON.stringify(query));
-    
+
     const chats = await Chat.find(query)
       .sort({ updatedAt: -1 })
-      .select('_id title createdAt updatedAt messages')
+      .select("_id title createdAt updatedAt messages")
       .limit(100);
-    
-    console.log(`✅ Found ${chats.length} chats for userId: ${userId || 'null'}`);
-    console.log(`📋 Chat titles:`, chats.map(c => c.title).slice(0, 5));
-    
+
+    console.log(`✅ Found ${chats.length} chats for userId: ${userId || "null"}`);
+    console.log(`📋 Chat titles:`, chats.map((c) => c.title).slice(0, 5));
+
     return res.json({
       success: true,
-      chats: chats.map(chat => ({
+      chats: chats.map((chat) => ({
         id: chat._id.toString(),
         title: chat.title,
         createdAt: chat.createdAt,
         updatedAt: chat.updatedAt,
-        messageCount: chat.messages?.length || 0
-      }))
+        messageCount: chat.messages?.length || 0,
+      })),
     });
   } catch (err) {
-    console.error('❌ Get chats error:', err);
-    return res.status(500).json({ error: 'Failed to fetch chats', message: err.message });
+    console.error("❌ Get chats error:", err);
+    return res.status(500).json({ error: "Failed to fetch chats", message: err.message });
   }
 });
 
 // Get specific chat by ID
-router.get('/chat/:chatId', async (req, res) => {
+router.get("/chat/:chatId", async (req, res) => {
   try {
     const userId = req.user?.id || null;
-    const query = userId ? { _id: req.params.chatId, userId: userId } : { _id: req.params.chatId, userId: null };
+    const query = userId
+      ? { _id: req.params.chatId, userId: userId }
+      : { _id: req.params.chatId, userId: null };
     const chat = await Chat.findOne(query);
-    
+
     if (!chat) {
-      return res.status(404).json({ error: 'Chat not found' });
+      return res.status(404).json({ error: "Chat not found" });
     }
-    
+
     return res.json({
       success: true,
       chat: {
         id: chat._id.toString(),
         title: chat.title,
-        messages: chat.messages || [], // Messages include thinking field if present
+        messages: chat.messages || [],
         createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt
-      }
+        updatedAt: chat.updatedAt,
+      },
     });
   } catch (err) {
-    console.error('❌ Get chat error:', err);
-    return res.status(500).json({ error: 'Failed to fetch chat', message: err.message });
+    console.error("❌ Get chat error:", err);
+    return res.status(500).json({ error: "Failed to fetch chat", message: err.message });
   }
 });
 
 // Create new chat
-router.post('/chat/new', async (req, res) => {
+router.post("/chat/new", async (req, res) => {
   try {
     const userId = req.user?.id || null;
     const { title } = req.body;
-    
-    console.log(`✨ Creating new chat - title: "${title || 'New Chat'}", userId: ${userId || 'null'}`);
-    
+
+    console.log(
+      `✨ Creating new chat - title: "${title || "New Chat"}", userId: ${userId || "null"}`
+    );
+
     const chat = await Chat.create({
       userId: userId || null,
-      title: title || 'New Chat',
-      messages: []
+      title: title || "New Chat",
+      messages: [],
     });
-    
+
     console.log(`✅ New chat created: ${chat._id}, title: "${chat.title}"`);
-    
+
     return res.json({
       success: true,
       chat: {
@@ -326,37 +365,37 @@ router.post('/chat/new', async (req, res) => {
         title: chat.title,
         messages: [],
         createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt
-      }
+        updatedAt: chat.updatedAt,
+      },
     });
   } catch (err) {
-    console.error('❌ Create chat error:', err);
-    return res.status(500).json({ error: 'Failed to create chat', message: err.message });
+    console.error("❌ Create chat error:", err);
+    return res.status(500).json({ error: "Failed to create chat", message: err.message });
   }
 });
 
-// Save already-generated chat content (for streaming) - no auth required
-router.post('/chat/save', async (req, res) => {
+// Save already-generated chat content (for streaming)
+router.post("/chat/save", async (req, res) => {
   try {
     const { chatId, message, thinking, userMessage } = req.body;
     const userId = req.user?.id || null;
-    
+
     console.log(`💾 Save chat request:`, {
-      chatId: chatId || 'new',
+      chatId: chatId || "new",
       messageLength: message?.length || 0,
       hasThinking: !!thinking,
       userMessageLength: userMessage?.length || 0,
-      userId: userId || 'null'
+      userId: userId || "null",
     });
-    
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      console.error('❌ Invalid message in save request');
-      return res.status(400).json({ error: 'Message is required' });
+
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      console.error("❌ Invalid message in save request");
+      return res.status(400).json({ error: "Message is required" });
     }
 
-    if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
-      console.error('❌ Invalid userMessage in save request');
-      return res.status(400).json({ error: 'User message is required' });
+    if (!userMessage || typeof userMessage !== "string" || userMessage.trim().length === 0) {
+      console.error("❌ Invalid userMessage in save request");
+      return res.status(400).json({ error: "User message is required" });
     }
 
     // Save to database
@@ -367,41 +406,44 @@ router.post('/chat/save', async (req, res) => {
       chat = await Chat.findOne(query);
       if (!chat) {
         console.error(`❌ Chat not found: ${chatId}`);
-        return res.status(404).json({ error: 'Chat not found' });
+        return res.status(404).json({ error: "Chat not found" });
       }
-      
+
       // Add new messages
       chat.messages.push({
-        role: 'user',
+        role: "user",
         content: userMessage.trim(),
-        timestamp: new Date()
+        timestamp: new Date(),
       });
       const assistantMessage = {
-        role: 'assistant',
+        role: "assistant",
         content: message.trim(),
-        timestamp: new Date()
+        timestamp: new Date(),
       };
       if (thinking) {
         assistantMessage.thinking = thinking;
       }
       chat.messages.push(assistantMessage);
-      
+
       // Update title if still "New Chat"
-      if (chat.title === 'New Chat' && chat.messages.length >= 2) {
-        const firstUserMsg = chat.messages.find(m => m.role === 'user')?.content || '';
-        chat.title = firstUserMsg.slice(0, 50) + (firstUserMsg.length > 50 ? '...' : '');
+      if (chat.title === "New Chat" && chat.messages.length >= 2) {
+        const firstUserMsg = chat.messages.find((m) => m.role === "user")?.content || "";
+        chat.title = firstUserMsg.slice(0, 50) + (firstUserMsg.length > 50 ? "..." : "");
       }
-      
+
       chat.updatedAt = new Date();
       await chat.save();
-      console.log(`✅ Chat updated: ${chat._id}, title: "${chat.title}", messages: ${chat.messages.length}`);
+      console.log(
+        `✅ Chat updated: ${chat._id}, title: "${chat.title}", messages: ${chat.messages.length}`
+      );
     } else {
       // Create new chat
-      const title = userMessage.trim().slice(0, 50) + (userMessage.trim().length > 50 ? '...' : '');
+      const title =
+        userMessage.trim().slice(0, 50) + (userMessage.trim().length > 50 ? "..." : "");
       const assistantMessage = {
-        role: 'assistant',
+        role: "assistant",
         content: message.trim(),
-        timestamp: new Date()
+        timestamp: new Date(),
       };
       if (thinking) {
         assistantMessage.thinking = thinking;
@@ -411,14 +453,16 @@ router.post('/chat/save', async (req, res) => {
         title: title,
         messages: [
           {
-            role: 'user',
+            role: "user",
             content: userMessage.trim(),
-            timestamp: new Date()
+            timestamp: new Date(),
           },
-          assistantMessage
-        ]
+          assistantMessage,
+        ],
       });
-      console.log(`✅ New chat created: ${chat._id}, title: "${chat.title}", userId: ${userId || 'null'}`);
+      console.log(
+        `✅ New chat created: ${chat._id}, title: "${chat.title}", userId: ${userId || "null"}`
+      );
     }
 
     return res.json({
@@ -429,93 +473,90 @@ router.post('/chat/save', async (req, res) => {
         title: chat.title,
         messages: chat.messages,
         createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt
-      }
+        updatedAt: chat.updatedAt,
+      },
     });
   } catch (err) {
-    console.error('❌ Save chat error:', err);
-    console.error('❌ Error stack:', err.stack);
-    return res.status(500).json({ 
-      error: 'Failed to save chat', 
+    console.error("❌ Save chat error:", err);
+    console.error("❌ Error stack:", err.stack);
+    return res.status(500).json({
+      error: "Failed to save chat",
       message: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
     });
   }
 });
 
-// Send message in chat (create or update)
-router.post('/chat', async (req, res) => {
+// Non-streaming chat
+router.post("/chat", async (req, res) => {
   try {
     const { chatId, message, history = [] } = req.body;
     const userId = req.user?.id || null;
-    
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      return res.status(400).json({ error: 'Message is required and must be a non-empty string' });
+
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return res.status(400).json({ error: "Message is required and must be a non-empty string" });
     }
 
-    console.log(`💬 Chat request - chatId: ${chatId || 'new'}, message length: ${message.length}, history length: ${history.length}`);
-    
+    console.log(
+      `💬 Chat request - chatId: ${chatId || "new"}, message length: ${message.length}, history length: ${history.length}`
+    );
+
     // Call AI service for chat (non-streaming)
-    const r = await ai.post('/chat', {
+    const r = await ai.post("/chat", {
       message: message.trim(),
-      history: history
+      history: history,
     });
 
     if (r.status < 200 || r.status >= 300) {
-      return res.status(502).json({ 
-        error: 'AI service error', 
-        detail: r.data?.detail || r.data?.message 
+      return res.status(502).json({
+        error: "AI service error",
+        detail: r.data?.detail || r.data?.message,
       });
     }
 
-    const aiResponse = r.data?.message || r.data?.data?.message || r.data?.response || 'No response generated';
+    const aiResponse =
+      r.data?.message || r.data?.data?.message || r.data?.response || "No response generated";
     const thinking = r.data?.data?.thinking || r.data?.thinking || null;
-    
+
     // Save to database
     let chat;
     if (chatId) {
-      // Update existing chat
       const query = userId ? { _id: chatId, userId: userId } : { _id: chatId, userId: null };
       chat = await Chat.findOne(query);
       if (!chat) {
-        return res.status(404).json({ error: 'Chat not found' });
+        return res.status(404).json({ error: "Chat not found" });
       }
-      
-      // Add new messages
+
       chat.messages.push({
-        role: 'user',
+        role: "user",
         content: message.trim(),
-        timestamp: new Date()
+        timestamp: new Date(),
       });
       const assistantMessage = {
-        role: 'assistant',
+        role: "assistant",
         content: aiResponse,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
-      // Add thinking if available
       if (thinking) {
         assistantMessage.thinking = thinking;
       }
       chat.messages.push(assistantMessage);
-      
-      // Generate title from first user message if title is still "New Chat"
-      if (chat.title === 'New Chat' && chat.messages.length >= 2) {
-        const firstUserMessage = chat.messages.find(m => m.role === 'user')?.content || '';
-        chat.title = firstUserMessage.slice(0, 50) + (firstUserMessage.length > 50 ? '...' : '');
+
+      if (chat.title === "New Chat" && chat.messages.length >= 2) {
+        const firstUserMessage = chat.messages.find((m) => m.role === "user")?.content || "";
+        chat.title = firstUserMessage.slice(0, 50) + (firstUserMessage.length > 50 ? "..." : "");
       }
-      
+
       chat.updatedAt = new Date();
       await chat.save();
       console.log(`💾 Chat updated: ${chat._id}, title: ${chat.title}, messages: ${chat.messages.length}`);
     } else {
-      // Create new chat
-      const title = message.trim().slice(0, 50) + (message.trim().length > 50 ? '...' : '');
+      const title = message.trim().slice(0, 50) + (message.trim().length > 50 ? "..." : "");
       const assistantMessage = {
-        role: 'assistant',
+        role: "assistant",
         content: aiResponse,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
-      // Add thinking if available
       if (thinking) {
         assistantMessage.thinking = thinking;
       }
@@ -524,119 +565,207 @@ router.post('/chat', async (req, res) => {
         title: title,
         messages: [
           {
-            role: 'user',
+            role: "user",
             content: message.trim(),
-            timestamp: new Date()
+            timestamp: new Date(),
           },
-          assistantMessage
-        ]
+          assistantMessage,
+        ],
       });
-      console.log(`✨ New chat created: ${chat._id}, title: ${chat.title}, userId: ${userId || 'null'}`);
+      console.log(`✨ New chat created: ${chat._id}, title: ${chat.title}, userId: ${userId || "null"}`);
     }
 
     return res.json({
       success: true,
       message: aiResponse,
-      thinking: thinking, // Include thinking step if available
+      thinking: thinking,
       chatId: chat._id.toString(),
       chat: {
         id: chat._id.toString(),
         title: chat.title,
         messages: chat.messages,
         createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt
+        updatedAt: chat.updatedAt,
       },
-      ...(r.data?.data || {})
+      ...(r.data?.data || {}),
     });
   } catch (err) {
-    console.error('❌ Chat error:', err);
-    return res.status(500).json({ 
-      error: 'Failed to process chat', 
-      message: err.message 
+    console.error("❌ Chat error:", err);
+    return res.status(500).json({
+      error: "Failed to process chat",
+      message: err.message,
     });
   }
 });
 
+/**
+ * STREAMING CHAT (SSE)
+ * Proxies SSE from the AI service so the frontend can call /api/ai/chat/stream
+ */
+router.post("/chat/stream", async (req, res) => {
+  try {
+    const { message, history = [], chatId = null } = req.body || {};
+    const aiBase = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+    console.log(`🔌 Proxying SSE to ${aiBase}/chat/stream`);
+
+    const upstream = await _fetch(`${aiBase}/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        history: history.map((m) => ({ role: m.role, content: m.content })),
+        chatId,
+      }),
+    });
+
+    if (!upstream.ok || !upstream.body) {
+      const text = await upstream.text().catch(() => "");
+      console.error("❌ Upstream SSE error:", upstream.status, text);
+      res.status(upstream.status).json({ error: text || "Upstream stream init failed" });
+      return;
+    }
+
+    // SSE headers
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    // Pipe upstream to client
+    const reader = upstream.body.getReader();
+    req.on("close", () => {
+      try {
+        reader.cancel();
+      } catch {}
+    });
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+
+    res.end();
+  } catch (err) {
+    console.error("❌ SSE proxy error:", err);
+    // Send an SSE-style error then end
+    res.write(
+      `event: error\ndata: ${JSON.stringify({ message: err.message || "stream error" })}\n\n`
+    );
+    res.end();
+  }
+});
+
 // Update chat title
-router.put('/chat/:chatId/title', async (req, res) => {
+router.put("/chat/:chatId/title", async (req, res) => {
   try {
     const userId = req.user?.id || null;
     const { title } = req.body;
-    
-    if (!title || typeof title !== 'string') {
-      return res.status(400).json({ error: 'Title is required' });
+
+    if (!title || typeof title !== "string") {
+      return res.status(400).json({ error: "Title is required" });
     }
-    
-    const query = userId ? { _id: req.params.chatId, userId: userId } : { _id: req.params.chatId, userId: null };
+
+    const query = userId
+      ? { _id: req.params.chatId, userId: userId }
+      : { _id: req.params.chatId, userId: null };
     const chat = await Chat.findOneAndUpdate(
       query,
       { title: title.trim(), updatedAt: new Date() },
       { new: true }
     );
-    
+
     if (!chat) {
-      return res.status(404).json({ error: 'Chat not found' });
+      return res.status(404).json({ error: "Chat not found" });
     }
-    
+
     return res.json({
       success: true,
       chat: {
         id: chat._id.toString(),
-        title: chat.title
-      }
+        title: chat.title,
+      },
     });
   } catch (err) {
-    console.error('❌ Update chat title error:', err);
-    return res.status(500).json({ error: 'Failed to update chat title', message: err.message });
+    console.error("❌ Update chat title error:", err);
+    return res.status(500).json({ error: "Failed to update chat title", message: err.message });
   }
 });
 
 // Delete chat
-router.delete('/chat/:chatId', async (req, res) => {
+router.delete("/chat/:chatId", async (req, res) => {
   try {
     const userId = req.user?.id || null;
-    const query = userId ? { _id: req.params.chatId, userId: userId } : { _id: req.params.chatId, userId: null };
+    const query = userId
+      ? { _id: req.params.chatId, userId: userId }
+      : { _id: req.params.chatId, userId: null };
     const chat = await Chat.findOneAndDelete(query);
-    
+
     if (!chat) {
-      return res.status(404).json({ error: 'Chat not found' });
+      return res.status(404).json({ error: "Chat not found" });
     }
-    
-    return res.json({ success: true, message: 'Chat deleted successfully' });
+
+    return res.json({ success: true, message: "Chat deleted successfully" });
   } catch (err) {
-    console.error('❌ Delete chat error:', err);
-    return res.status(500).json({ error: 'Failed to delete chat', message: err.message });
+    console.error("❌ Delete chat error:", err);
+    return res.status(500).json({ error: "Failed to delete chat", message: err.message });
   }
 });
 
-// Fetch latest generated by documentId
-router.get('/summary/:documentId', async (req, res) => {
+// Latest generated by documentId
+router.get("/summary/:documentId", async (req, res) => {
   try {
-    const item = await Summary.findOne({ documentId: req.params.documentId }).sort({ createdAt: -1 });
-    if (!item) return res.status(404).json({ error: 'Summary not found' });
-    return res.json({ success: true, summary: { content: item.content, title: (await Document.findById(item.documentId))?.title, model: item.model, createdAt: item.createdAt } });
+    const item = await Summary.findOne({ documentId: req.params.documentId }).sort({
+      createdAt: -1,
+    });
+    if (!item) return res.status(404).json({ error: "Summary not found" });
+    return res.json({
+      success: true,
+      summary: {
+        content: item.content,
+        title: (await Document.findById(item.documentId))?.title,
+        model: item.model,
+        createdAt: item.createdAt,
+      },
+    });
   } catch (e) {
-    return res.status(500).json({ error: 'failed', message: e.message });
+    return res.status(500).json({ error: "failed", message: e.message });
   }
 });
 
-router.get('/quiz/:documentId', async (req, res) => {
+router.get("/quiz/:documentId", async (req, res) => {
   try {
     const item = await Quiz.findOne({ documentId: req.params.documentId }).sort({ createdAt: -1 });
-    if (!item) return res.status(404).json({ error: 'Quiz not found' });
-    return res.json({ success: true, quiz: { questions: item.questionsText, title: (await Document.findById(item.documentId))?.title, numQuestions: item.numQuestions, createdAt: item.createdAt } });
+    if (!item) return res.status(404).json({ error: "Quiz not found" });
+    return res.json({
+      success: true,
+      quiz: {
+        questions: item.questionsText,
+        title: (await Document.findById(item.documentId))?.title,
+        numQuestions: item.numQuestions,
+        createdAt: item.createdAt,
+      },
+    });
   } catch (e) {
-    return res.status(500).json({ error: 'failed', message: e.message });
+    return res.status(500).json({ error: "failed", message: e.message });
   }
 });
 
-router.get('/flashcards/:documentId', async (req, res) => {
+router.get("/flashcards/:documentId", async (req, res) => {
   try {
-    const item = await Flashcard.findOne({ documentId: req.params.documentId }).sort({ createdAt: -1 });
-    if (!item) return res.status(404).json({ error: 'Flashcards not found' });
-    return res.json({ success: true, flashcards: item.cards, title: (await Document.findById(item.documentId))?.title, numCards: item.numCards, createdAt: item.createdAt });
+    const item = await Flashcard.findOne({ documentId: req.params.documentId }).sort({
+      createdAt: -1,
+    });
+    if (!item) return res.status(404).json({ error: "Flashcards not found" });
+    return res.json({
+      success: true,
+      flashcards: item.cards,
+      title: (await Document.findById(item.documentId))?.title,
+      numCards: item.numCards,
+      createdAt: item.createdAt,
+    });
   } catch (e) {
-    return res.status(500).json({ error: 'failed', message: e.message });
+    return res.status(500).json({ error: "failed", message: e.message });
   }
 });
 
