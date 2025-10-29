@@ -1,36 +1,229 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import logo from '../assets/logo.png';
+import bgImage from '../assets/bg.jpg';
+import { useQuizGeneration, useFlashcardsGeneration } from '../hooks/useAI';
+import backendAPI from '../services/backendApi';
+import ProfileIcon from '../components/ProfileIcon';
 
 export default function Summary() {
-  return (
-    <div className="bg-background-light dark:bg-background-light font-body text-text-light-secondary dark:text-text-light-secondary antialiased noise-texture">
-      <div className="relative min-h-screen">
-        <div className="path-background">
-          <div className="path path-1"></div>
-          <div className="path path-2"></div>
-          <div className="path path-3"></div>
-        </div>
+  const location = useLocation();
+  const [summaryData, setSummaryData] = useState(null);
+  const [documentId, setDocumentId] = useState(null);
+  const navigate = useNavigate();
+  const { generateQuiz, isGenerating } = useQuizGeneration();
+  const { generateFlashcards, isGenerating: isGeneratingFlashcards } = useFlashcardsGeneration();
+  
+  const ensureJsPDF = async () => {
+    if (window.jspdf || window.jsPDF) return window.jspdf || window.jsPDF;
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
+      script.onload = resolve;
+      script.onerror = reject;
+      document.body.appendChild(script);
+    });
+    return window.jspdf || window.jsPDF;
+  };
 
-        <div className="flex flex-col min-h-screen relative z-10">
-          <header className="sticky top-0 z-10 bg-background-light/80 dark:bg-background-light/80 backdrop-blur-sm border-b border-border-light dark:border-border-light">
+  const exportSummaryAsPDF = async () => {
+    try {
+      const data = summaryData || {};
+      const jspdf = await ensureJsPDF();
+      const { jsPDF } = jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+
+      const marginX = 56;
+      const marginY = 64;
+      const lineHeight = 18;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const maxTextWidth = pageWidth - marginX * 2;
+
+      const addWrapped = (text, x, y, options = {}) => {
+        const lines = doc.splitTextToSize(String(text || ''), maxTextWidth);
+        lines.forEach(ln => { doc.text(ln, x, y, options); y += lineHeight; });
+        return y;
+      };
+
+      // Title
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text((data.title || 'Summary'), marginX, marginY);
+      let cursorY = marginY + 28;
+
+      // Summary body
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(12);
+      const paragraphs = String(data.summary || '').split(/\n\n+/);
+      paragraphs.forEach((p, idx) => {
+        cursorY = addWrapped(p, marginX, cursorY);
+        if (idx < paragraphs.length - 1) {
+          cursorY += 8;
+        }
+        if (cursorY > doc.internal.pageSize.getHeight() - marginY - 40) {
+          doc.addPage();
+          cursorY = marginY;
+        }
+      });
+
+      const fileName = `${(data.title || 'summary').replace(/[^a-z0-9-_]+/gi, '_')}.pdf`;
+      doc.save(fileName);
+    } catch (err) {
+      console.error('Export summary failed:', err);
+      alert('Failed to export PDF.');
+    }
+  };
+
+  useEffect(() => {
+    // Add dark class to body
+    document.body.classList.add('dark');
+    
+    const loadSummary = async () => {
+      // Get documentId from navigation state or sessionStorage
+      let docId = location.state?.documentId || location.state?.document?.id || location.state?.document?._id;
+      if (!docId) {
+        try {
+          const stored = sessionStorage.getItem('lastDocumentId');
+          if (stored) docId = stored;
+        } catch {}
+      }
+      
+      if (docId) {
+        setDocumentId(docId);
+        // Fetch summary from backend
+        try {
+          const res = await backendAPI.getSummary(docId);
+          if (res.summary) {
+            setSummaryData({
+              title: res.summary.title || 'Summary',
+              summary: res.summary.content || '',
+              content: ''
+            });
+          } else {
+            // No summary in DB, check if passed in state
+            if (location.state?.summary) {
+              setSummaryData({
+                title: location.state.title || 'Summary',
+                summary: location.state.summary || '',
+                content: location.state.content || ''
+              });
+            } else {
+              setSummaryData({
+                title: 'Summary',
+                summary: 'No summary available. Please generate a summary first.',
+                content: ''
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load summary:', err);
+          // Fallback to state if available
+          if (location.state?.summary) {
+            setSummaryData({
+              title: location.state.title || 'Summary',
+              summary: location.state.summary || '',
+              content: location.state.content || ''
+            });
+          } else {
+            setSummaryData({
+              title: 'Summary',
+              summary: 'No summary available. Please generate a summary first.',
+              content: ''
+            });
+          }
+        }
+      } else if (location.state?.summary) {
+        // Summary passed directly in state
+        setSummaryData({
+          title: location.state.title || 'Summary',
+          summary: location.state.summary || '',
+          content: location.state.content || ''
+        });
+      } else {
+        // Default/empty
+        setSummaryData({
+          title: 'Summary',
+          summary: 'No summary available.',
+          content: ''
+        });
+      }
+    };
+    
+    loadSummary();
+
+    return () => {
+      // Cleanup on unmount
+      document.body.classList.remove('dark');
+    };
+  }, [location]);
+
+  const handleGenerateQuiz = async () => {
+    try {
+      const docId = documentId || location.state?.documentId;
+      if (!docId) {
+        alert('Missing document context. Please generate from Upload page again.');
+        return;
+      }
+      const res = await generateQuiz(docId, { questionCount: 10, difficulty: 'medium', title: summaryData?.title });
+      navigate('/quiz', { state: { quiz: res, title: summaryData?.title } });
+    } catch (err) {
+      console.error('Generate Quiz from Summary failed:', err);
+    }
+  };
+
+  const handleGenerateFlashcards = async () => {
+    try {
+      const docId = documentId || location.state?.documentId;
+      if (!docId) {
+        alert('Missing document context. Please generate from Upload page again.');
+        return;
+      }
+      const res = await generateFlashcards(docId, { numCards: 24 });
+      navigate('/flashcards', { state: { flashcards: res.cards, raw: res.raw, title: res.title || summaryData?.title, documentId: docId } });
+    } catch (err) {
+      console.error('Generate Flashcards from Summary failed:', err);
+    }
+  };
+
+  return (
+    <div className="flex flex-col min-h-screen relative overflow-hidden">
+      {/* Background Image with Overlay */}
+      <div 
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${bgImage})`, zIndex: 0 }}
+      >
+        {/* Dark overlay for readability */}
+        <div className="absolute inset-0 bg-black/60"></div>
+        {/* Animated Gradient Overlay */}
+        <div className="absolute inset-0">
+          <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 via-yellow-500/20 to-orange-500/20 animate-pulse"></div>
+          <div className="absolute inset-0 bg-gradient-to-tl from-purple-500/20 via-blue-500/20 to-green-500/20 animate-pulse" style={{ animationDelay: '1s' }}></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-red-500/10 via-orange-500/10 to-yellow-500/10 animate-pulse" style={{ animationDelay: '2s' }}></div>
+          {/* Swirling patterns */}
+          <div className="absolute top-0 left-0 w-full h-full">
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-green-400/30 rounded-full blur-3xl animate-blob"></div>
+            <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-purple-400/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '2s' }}></div>
+            <div className="absolute bottom-1/4 left-1/3 w-96 h-96 bg-blue-400/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '4s' }}></div>
+            <div className="absolute top-1/2 right-1/3 w-96 h-96 bg-yellow-400/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '1s' }}></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col min-h-screen relative z-10">
+        <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/10 border-b border-white/20">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center justify-between h-16">
                 <div className="flex items-center gap-4">
-                  <div className="text-primary size-8">
-                    <svg fill="currentColor" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M24 45.8096C19.6865 45.8096 15.4698 44.5305 11.8832 42.134C8.29667 39.7376 5.50128 36.3314 3.85056 32.3462C2.19985 28.361 1.76794 23.9758 2.60947 19.7452C3.451 15.5145 5.52816 11.6284 8.57829 8.5783C11.6284 5.52817 15.5145 3.45101 19.7452 2.60948C23.9758 1.76795 28.361 2.19986 32.3462 3.85057C36.3314 5.50129 39.7376 8.29668 42.134 11.8833C44.5305 15.4698 45.8096 19.6865 45.8096 24L24 24L24 45.8096Z"></path></svg>
-                  </div>
-                  <h1 className="font-sans text-xl font-bold text-text-light-primary dark:text-text-light-primary">NotesQuest</h1>
+                  <img src={logo} alt="NotesQuest" className="h-8 w-8 object-contain" />
+                  <h1 className="font-sans text-xl font-bold text-white">NotesQuest</h1>
                 </div>
                 <nav className="hidden md:flex items-center gap-6">
-                  <a className="font-sans text-sm font-medium text-text-light-secondary dark:text-text-light-secondary hover:text-primary dark:hover:text-primary transition-colors" href="#">Dashboard</a>
-                  <a className="font-sans text-sm font-medium text-primary dark:text-primary" href="#">Summaries</a>
-                  <a className="font-sans text-sm font-medium text-text-light-secondary dark:text-text-light-secondary hover:text-primary dark:hover:text-primary transition-colors" href="#">Quizzes</a>
-                  <a className="font-sans text-sm font-medium text-text-light-secondary dark:text-text-light-secondary hover:text-primary dark:hover:text-primary transition-colors" href="#">Flashcards</a>
-                  <Link to="/history" className="font-sans text-sm font-medium text-text-light-secondary dark:text-text-light-secondary hover:text-primary dark:hover:text-primary transition-colors">History</Link>
                 </nav>
                 <div className="flex items-center gap-4">
-                  <button className="p-2 rounded-full text-text-light-secondary dark:text-text-light-secondary hover:bg-gray-200 dark:hover:bg-gray-200 hover:text-text-light-primary dark:hover:text-text-light-primary transition-colors"><span className="material-symbols-outlined"> help </span></button>
-                  <button className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuCQMd0tyHkLOOsq01S76EcJ7gTUkNiak288G2WiJaa53U3AHbBz6Q5o1T5d_SSdn0_0M4593PsyxaIb3yeCi8YN0oiGuFHeBjzcFRDr_MejnFbPpfhL8m1JU3lMWigA7Y2SWJ0pkfU8c8-FfPe5fMjLCjDa3IEZ2Nx82FPKd8hC_ISM9IfgFk1cRNJ0Xx_-toLTl_JpCfoSeu_x3lvPR6sb_Scn491XwfsyOIm2ja69-wZOGwvo9r8UwvOvuXw1aKGRmDRD1gf-bIRO")' }}></button>
+                  <Link to="/upload" className="px-6 py-2 text-sm font-bold bg-white/20 backdrop-blur-sm text-white border border-white/30 rounded-lg hover:bg-white/30 transition-all duration-300">Home</Link>
+                  <Link to="/history" className="px-6 py-2 text-sm font-bold bg-white/20 backdrop-blur-sm text-white border border-white/30 rounded-lg hover:bg-white/30 transition-all duration-300">History</Link>
+                  <ProfileIcon />
                 </div>
               </div>
             </div>
@@ -39,72 +232,79 @@ export default function Summary() {
           <main className="flex-1">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
               <div className="max-w-5xl mx-auto">
-                <div className="flex items-center text-sm text-text-light-secondary dark:text-text-light-secondary mb-8">
-                  <a className="font-sans hover:text-primary" href="#">Summaries</a>
+                <div className="flex items-center text-sm text-gray-300 mb-8">
+                  <a className="font-sans hover:text-blue-400" href="#">Summaries</a>
                   <span className="mx-2">/</span>
-                  <span className="font-sans font-medium text-text-light-primary dark:text-text-dark-primary">Chapter 1 Summary</span>
+                  <span className="font-sans font-medium text-white">Chapter 1 Summary</span>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                  <div className="lg:col-span-2 bg-surface-light/80 dark:bg-surface-light/80 backdrop-blur-md p-8 rounded-soft-xl shadow-soft noise-texture">
+                  <div className="lg:col-span-2 backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-8 shadow-2xl">
                     <div className="relative">
-                      <h2 className="font-sans text-3xl md:text-4xl font-bold text-text-light-primary dark:text-text-light-primary mb-4">Chapter 1: Introduction to Biology</h2>
-                      <p className="text-base text-text-light-secondary dark:text-text-light-secondary leading-relaxed">
-                        Biology is the study of life and living organisms, including their physical structure, chemical processes, molecular interactions, physiological mechanisms, development, and evolution. It encompasses a wide range of fields, from the microscopic study of cells and molecules to the macroscopic study of ecosystems and the biosphere. Key concepts in biology include cell theory, genetics, evolution, and homeostasis. Understanding these principles is fundamental to comprehending the diversity and complexity of life on Earth.
-                      </p>
-                      <div className="absolute -top-4 -right-4 size-12 bg-primary/10 text-primary rounded-full flex items-center justify-center opacity-50"><span className="material-symbols-outlined text-2xl">book</span></div>
-                    </div>
-                    <div className="mt-6 flex justify-end">
-                      <Link to="/progress" state={{ target: 'quiz' }} className="inline-flex">
-                        <button className="flex items-center justify-center gap-2 rounded-soft-lg h-11 px-5 font-sans text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors shadow-sm backdrop-blur-md">
-                          <span className="material-symbols-outlined text-base">quiz</span>
-                          <span>Generate Quiz</span>
-                        </button>
-                      </Link>
+                      <h2 className="font-sans text-3xl md:text-4xl font-bold text-white mb-4">
+                        {summaryData?.title || 'Summary'}
+                      </h2>
+                      <div className="text-base text-gray-300 leading-relaxed prose prose-invert prose-lg max-w-none">
+                        <ReactMarkdown
+                          components={{
+                            h3: ({ node, ...props }) => (
+                              <h3 className="text-2xl md:text-3xl font-bold text-white mt-6 mb-4 first:mt-0" {...props} />
+                            ),
+                            h4: ({ node, ...props }) => (
+                              <h4 className="text-xl md:text-2xl font-bold text-white mt-5 mb-3" {...props} />
+                            ),
+                            h5: ({ node, ...props }) => (
+                              <h5 className="text-lg md:text-xl font-bold text-white mt-4 mb-2" {...props} />
+                            ),
+                            h6: ({ node, ...props }) => (
+                              <h6 className="text-base md:text-lg font-bold text-white mt-3 mb-2" {...props} />
+                            ),
+                            p: ({ node, ...props }) => (
+                              <p className="text-gray-300 mb-4 leading-relaxed" {...props} />
+                            ),
+                            strong: ({ node, ...props }) => (
+                              <strong className="font-bold text-white" {...props} />
+                            ),
+                            ul: ({ node, ...props }) => (
+                              <ul className="list-disc list-inside text-gray-300 mb-4 space-y-2 ml-4" {...props} />
+                            ),
+                            ol: ({ node, ...props }) => (
+                              <ol className="list-decimal list-inside text-gray-300 mb-4 space-y-2 ml-4" {...props} />
+                            ),
+                            li: ({ node, ...props }) => (
+                              <li className="text-gray-300 leading-relaxed" {...props} />
+                            ),
+                          }}
+                        >
+                          {summaryData?.summary || 'No summary available.'}
+                        </ReactMarkdown>
+                      </div>
+                      <div className="absolute -top-4 -right-4 size-12 bg-blue-500/10 text-blue-400 rounded-full flex items-center justify-center opacity-50"><span className="material-symbols-outlined text-2xl">book</span></div>
                     </div>
                   </div>
 
                   <div className="space-y-6">
-                    <div className="bg-surface-light/80 dark:bg-surface-light/80 backdrop-blur-md p-6 rounded-soft-lg shadow-soft noise-texture">
-                      <h3 className="font-sans text-xl font-bold text-text-light-primary dark:text-text-light-primary mb-4">Key Takeaways</h3>
-                      <div className="space-y-5">
-                        <div className="flex items-start gap-4">
-                          <div className="flex-shrink-0 size-10 rounded-full bg-analogous-1/10 flex items-center justify-center text-analogous-1"><span className="material-symbols-outlined text-xl"> science </span></div>
-                          <div>
-                            <p className="font-sans font-medium text-text-light-primary dark:text-text-light-primary">Cells</p>
-                            <p className="text-sm text-text-light-secondary dark:text-text-light-secondary">The basic unit of life, responsible for all life processes.</p>
-                          </div>
-                        </div>
-                        <div className="border-t border-border-light dark:border-border-light stitched-border"></div>
-                        <div className="flex items-start gap-4">
-                          <div className="flex-shrink-0 size-10 rounded-full bg-analogous-2/10 flex items-center justify-center text-analogous-2"><span className="material-symbols-outlined text-xl"> diversity_3 </span></div>
-                          <div>
-                            <p className="font-sans font-medium text-text-light-primary dark:text-text-light-primary">Evolution</p>
-                            <p className="text-sm text-text-light-secondary dark:text-text-light-secondary">The process by which organisms adapt and change over time.</p>
-                          </div>
-                        </div>
-                        <div className="border-t border-border-light dark:border-border-light stitched-border"></div>
-                        <div className="flex items-start gap-4">
-                          <div className="flex-shrink-0 size-10 rounded-full bg-complementary/10 flex items-center justify-center text-complementary"><span className="material-symbols-outlined text-xl"> balance </span></div>
-                          <div>
-                            <p className="font-sans font-medium text-text-light-primary dark:text-text-light-primary">Homeostasis</p>
-                            <p className="text-sm text-text-light-secondary dark:text-text-light-secondary">The maintenance of a stable internal environment.</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end gap-4">
-                      <button className="flex items-center justify-center gap-2 rounded-soft-lg h-11 px-5 font-sans text-sm font-medium bg-gray-200/80 dark:bg-gray-200/80 text-text-light-primary dark:text-text-light-primary hover:bg-gray-300 transition-colors shadow-sm backdrop-blur-md"><span className="material-symbols-outlined text-base"> print </span><span>Print</span></button>
-                      <button className="flex items-center justify-center gap-2 rounded-soft-lg h-11 px-5 font-sans text-sm font-medium bg-primary text-white hover:bg-primary/90 transition-colors shadow-soft backdrop-blur-md"><span className="material-symbols-outlined text-base"> file_download </span><span>Export</span></button>
+                    <div className="flex justify-end">
+                      <button onClick={exportSummaryAsPDF} className="flex items-center justify-center gap-2 rounded-full h-11 px-5 font-sans text-sm font-medium bg-white text-gray-900 hover:bg-white/90 transition-all transform hover:scale-105 shadow-lg"><span className="material-symbols-outlined text-base"> file_download </span><span>Export</span></button>
                     </div>
                   </div>
+                </div>
+
+                {/* Generate Actions */}
+                <div className="mt-8 flex flex-wrap gap-4 justify-start">
+                  <button onClick={handleGenerateQuiz} disabled={isGenerating || isGeneratingFlashcards} className="flex items-center justify-center gap-2 rounded-full h-12 px-8 font-sans text-base font-medium bg-white text-gray-900 hover:bg-white/90 transition-all transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:transform-none">
+                    <span className="material-symbols-outlined text-xl">quiz</span>
+                    <span>{isGenerating ? 'Generating…' : 'Generate Quiz'}</span>
+                  </button>
+                  <button onClick={handleGenerateFlashcards} disabled={isGenerating || isGeneratingFlashcards} className="flex items-center justify-center gap-2 rounded-full h-12 px-8 font-sans text-base font-medium bg-white text-gray-900 hover:bg-white/90 transition-all transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:transform-none">
+                    <span className="material-symbols-outlined text-xl">style</span>
+                    <span>{isGeneratingFlashcards ? 'Generating…' : 'Generate Flashcards'}</span>
+                  </button>
                 </div>
               </div>
             </div>
           </main>
         </div>
       </div>
-    </div>
   );
 }

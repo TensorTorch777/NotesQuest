@@ -1,26 +1,54 @@
-# Dependencies
-/node_modules
-/.pnp
-.pnp.js
-
-# Testing
-/coverage
-
-# Production
-/build
-
-# Misc
+# OS / editors
 .DS_Store
-*.pem
+Thumbs.db
+.vscode/
+.idea/
 
-# Debugging
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+ai-service/__pycache__/
+
+# Node
+node_modules/
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Local Env Files
-.env*.local
+# Builds
+dist/
+build/
+.esbuild/
+
+# Frontend
+app/node_modules/
+app/dist/
+app/.vercel/
+
+# Backend
+backend/node_modules/
+backend/dist/
+
+# Data / misc
+chroma_db/
+docker/
+*.sqlite
+*.db
+*.log
+
+# Models / weights (HUGE — never commit)
+models/
+ai-service/models/
+**/*.safetensors
+**/*.bin
+**/*.pt
+
+# Secrets
 .env
-
-# Vite
-.vite/
+.env.*
+app/.env
+backend/.env

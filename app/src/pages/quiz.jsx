@@ -1,149 +1,223 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import logo from '../assets/logo.png';
+import bgImage from '../assets/bg.jpg';
+import backendAPI from '../services/backendApi';
+import ProfileIcon from '../components/ProfileIcon';
 
 export default function Quiz() {
-  const [showAnswer1, setShowAnswer1] = useState(false);
-  const [showAnswer3, setShowAnswer3] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [questions, setQuestions] = useState([]);
+  const [quizTitle, setQuizTitle] = useState('');
+  const [answers, setAnswers] = useState({});
+
+  useEffect(() => {
+    document.body.classList.add('dark');
+    
+    const loadQuiz = async () => {
+      // Check if quiz data is in state
+      if (location.state?.quiz?.parsed && Array.isArray(location.state.quiz.parsed)) {
+        setQuizTitle(location.state.quiz.title || 'Quiz');
+        setQuestions(location.state.quiz.parsed);
+        return;
+      }
+      
+      if (location.state?.quiz?.questions) {
+        const quizText = location.state.quiz.questions;
+        setQuizTitle(location.state.quiz.title || 'Quiz');
+        setQuestions(parseQuizQuestions(quizText));
+        return;
+      }
+      
+      // If documentId is present, fetch from backend
+      const docId = location.state?.documentId;
+      if (docId) {
+        try {
+          const res = await backendAPI.getQuiz(docId);
+          if (res.quiz?.questions) {
+            setQuizTitle(res.quiz.title || 'Quiz');
+            setQuestions(parseQuizQuestions(res.quiz.questions));
+          } else {
+            setQuizTitle(location.state?.title || 'Quiz');
+          }
+        } catch (err) {
+          console.error('Failed to load quiz:', err);
+          setQuizTitle(location.state?.title || 'Quiz');
+        }
+      } else {
+        setQuizTitle(location.state?.title || 'Quiz');
+      }
+    };
+    
+    loadQuiz();
+    
+    return () => {
+      document.body.classList.remove('dark');
+    };
+  }, [location]);
+
+  const parseQuizQuestions = (quizText) => {
+    const questionBlocks = quizText.split(/Q\d+\)/).filter(b => b.trim());
+    return questionBlocks.map((block, idx) => {
+      const lines = block.trim().split('\n').filter(l => l.trim());
+      const question = lines[0];
+      const options = { A: '', B: '', C: '', D: '' };
+      let correct = 'A';
+      
+      lines.slice(1).forEach(line => {
+        if (line.match(/^[ABCD]\)/)) {
+          const match = line.match(/^([ABCD])\)\s*(.+)/);
+          if (match) options[match[1]] = match[2];
+        } else if (line.includes('Correct:')) {
+          const match = line.match(/Correct:\s*([ABCD])/);
+          if (match) correct = match[1];
+        }
+      });
+      
+      return { id: idx + 1, question, options, correct };
+    });
+  };
+
+  const submitQuiz = () => {
+    if (questions.length === 0) return;
+    let correct = 0;
+    const review = questions.map(q => {
+      const user = answers[q.id];
+      const isCorrect = user === q.correct;
+      if (isCorrect) correct += 1;
+      return {
+        id: q.id,
+        question: q.question,
+        userAnswer: user || null,
+        correctAnswer: q.correct,
+        isCorrect,
+      };
+    });
+    const total = questions.length;
+    const incorrect = total - correct;
+    const score = correct; // 1 mark for correct, 0 for incorrect
+    const percent = Math.round((correct / total) * 100);
+
+    const payload = { title: quizTitle, total, correct, incorrect, score, percent, review };
+    try {
+      sessionStorage.setItem('lastQuizResult', JSON.stringify(payload));
+      sessionStorage.setItem('lastQuizRaw', JSON.stringify({ title: quizTitle, parsed: questions }));
+    } catch {}
+    navigate('/score', { state: payload });
+  };
 
   return (
-    <div className="bg-background-light dark:bg-background-light font-body text-text-light dark:text-text-light noise-texture">
-      <div className="relative flex min-h-screen w-full flex-col">
-        <div className="path-bg -z-10" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: -10 }}>
-          <svg width="1200" height="800" viewBox="0 0 1200 800" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="pinkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#FCE4EC" />
-                <stop offset="100%" stopColor="#880E4F" stopOpacity="0.3" />
-              </linearGradient>
-            </defs>
-            <path d="M-200 400 Q 150 100, 400 400 T 1000 400" stroke="url(#pinkGradient)" strokeWidth="80" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0px 0px 15px rgba(236, 64, 122, 0.1))' }} />
-            <path d="M1400 200 Q 1050 500, 800 200 T 200 200" stroke="url(#pinkGradient)" strokeWidth="60" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0px 0px 10px rgba(236, 64, 122, 0.05))' }} />
-            <path d="M-100 700 Q 300 500, 600 700 T 1300 700" stroke="url(#pinkGradient)" strokeWidth="45" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0px 0px 20px rgba(236, 64, 122, 0.15))' }} />
-          </svg>
+    <div className="flex flex-col min-h-screen relative overflow-hidden">
+      {/* Background Image with Overlay */}
+      <div 
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${bgImage})`, zIndex: 0 }}
+      >
+        {/* Dark overlay for readability */}
+        <div className="absolute inset-0 bg-black/60"></div>
+        {/* Animated Gradient Overlay */}
+        <div className="absolute inset-0">
+          <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 via-yellow-500/20 to-orange-500/20 animate-pulse"></div>
+          <div className="absolute inset-0 bg-gradient-to-tl from-purple-500/20 via-blue-500/20 to-green-500/20 animate-pulse" style={{ animationDelay: '1s' }}></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-red-500/10 via-orange-500/10 to-yellow-500/10 animate-pulse" style={{ animationDelay: '2s' }}></div>
+          {/* Swirling patterns */}
+          <div className="absolute top-0 left-0 w-full h-full">
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-green-400/30 rounded-full blur-3xl animate-blob"></div>
+            <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-purple-400/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '2s' }}></div>
+            <div className="absolute bottom-1/4 left-1/3 w-96 h-96 bg-blue-400/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '4s' }}></div>
+            <div className="absolute top-1/2 right-1/3 w-96 h-96 bg-yellow-400/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '1s' }}></div>
+          </div>
         </div>
-
-        <header className="sticky top-0 bg-background-light/70 backdrop-blur-sm flex items-center justify-between whitespace-nowrap border-b border-black/10 px-4 sm:px-6 lg:px-8 py-3 z-10">
-          <div className="flex items-center gap-4 text-text-light">
-            <svg className="h-8 w-8 text-primary" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.08V7.92c0-.41.47-.65.8-.4l4.67 3.08c.33.22.33.74 0 .96l-4.67 3.08c-.33.25-.8.01-.8-.4z"></path></svg>
-            <h2 className="font-sans text-2xl font-bold">NotesQuest</h2>
-          </div>
-          <div className="flex items-center gap-8">
-            <nav className="hidden md:flex items-center gap-8 font-sans">
-              <a href="#" className="text-sm font-medium text-text-light/70 hover:text-primary transition-colors">Dashboard</a>
-              <a href="#" className="text-sm font-medium text-text-light/70 hover:text-primary transition-colors">Library</a>
-              <a href="#" className="text-sm font-bold text-primary">Quizzes</a>
-              <a href="#" className="text-sm font-medium text-text-light/70 hover:text-primary transition-colors">Settings</a>
-              <Link to="/history" className="text-sm font-medium text-text-light/70 hover:text-primary transition-colors">History</Link>
-            </nav>
-            <img className="size-10 rounded-full" alt="User avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA2u-RHq0IRab4HXt2h5dU8C8qxq0MhPWWvfx1eTftLq8LNVs5nkjUvVulAUGWUxSGXiC2uxtIIfjsy7jtyjpRtq8hYI9J3DNA2QO07yuriCV96m6t-ywfHcPKNdL6T0z4cxmIrvTI97nm3bhKrA7l3lkkqogo4DXxLgN7v2iQ64OMBnzJhVkK_MPVcul1osyQU8ZwQBJIt6lW6NaqQkAvPzvpM046VcgZVyqgasF7MCND2nYBmPKQTM0JRShparg8_dkLWcyT5cXun" />
-          </div>
-        </header>
-
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 relative z-10">
-          <div className="max-w-3xl mx-auto space-y-10">
-            <div className="mb-4">
-              <h1 className="font-sans text-3xl font-bold tracking-tight text-text-light sm:text-4xl">Quiz: Chapter 3 - The Renaissance</h1>
-              <p className="mt-3 text-base text-text-light/80">Test your knowledge on the key concepts from the chapter.</p>
-            </div>
-
-            <div className="space-y-8">
-              {/* Question 1 */}
-              <div className="bg-surface-light/80 backdrop-blur-sm rounded-2xl shadow-soft noise-texture">
-                <div className="p-6">
-                  <div className="flex items-start gap-6">
-                    <span className="flex-shrink-0 text-primary font-sans font-bold text-xl">1.</span>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-sans font-bold text-text-light">What was the primary focus of Renaissance art?</h3>
-                      <p className="text-sm text-text-light/70 mt-1">Multiple Choice Question</p>
-                      <div className="mt-4 space-y-3">
-                        {['Religious iconography','Realistic human figures and perspective','Abstract expressionism','Geometric patterns'].map((opt, idx) => (
-                          <label key={idx} className="flex items-center p-3 rounded-xl bg-background-light hover:bg-primary/10 transition-colors cursor-pointer ring-1 ring-inset ring-transparent hover:ring-primary">
-                            <input type="radio" name="q1" className="h-5 w-5 text-primary focus:ring-primary border-black/20 bg-transparent" />
-                            <span className="ml-4 text-base text-text-light">{opt}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="px-6 py-3 border-t stitched-border border-black/10" style={{ ['--tw-border-opacity']: 0.5 }}>
-                  <div className="flex items-center justify-between">
-                    <a href="#" className="flex items-center gap-2 text-sm font-medium text-text-light/70 hover:text-primary transition-colors group"><span className="material-symbols-outlined text-xl">link</span><span className="border-b border-dashed border-text-light/40 group-hover:border-primary/80 transition-colors">View Source</span></a>
-                    <button onClick={() => setShowAnswer1(v => !v)} className="flex items-center gap-2 text-sm font-medium text-analogous-1 hover:text-analogous-1/80 transition-colors"><span className="material-symbols-outlined text-xl">{showAnswer1 ? 'visibility_off' : 'visibility'}</span><span>{showAnswer1 ? 'Hide Answer' : 'Show Answer'}</span></button>
-                  </div>
-                  {showAnswer1 && (
-                    <div className="mt-3 pt-3 border-t stitched-border border-black/10" style={{ ['--tw-border-opacity']: 0.5 }}>
-                      <p className="text-base font-sans font-medium text-text-light">Correct Answer: <span className="font-body font-normal">b) Realistic human figures and perspective</span></p>
-                      <p className="mt-2 text-base text-text-light/80">Explanation: Renaissance art moved away from the more stylized and symbolic forms of the Middle Ages towards a greater focus on naturalism, anatomical accuracy, and the mathematical principles of perspective.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Question 2 */}
-              <div className="bg-surface-light/80 backdrop-blur-sm rounded-2xl shadow-soft noise-texture">
-                <div className="p-6">
-                  <div className="flex items-start gap-6">
-                    <span className="flex-shrink-0 text-primary font-sans font-bold text-xl">2.</span>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-sans font-bold text-text-light">Name one major Renaissance artist and their most famous work.</h3>
-                      <p className="text-sm text-text-light/70 mt-1">Short Answer Question</p>
-                      <div className="mt-6">
-                        <textarea rows={3} placeholder="Your answer here..." className="w-full rounded-xl border-black/20 bg-background-light focus:ring-primary focus:border-primary text-text-light p-4 placeholder:text-text-light/50"></textarea>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="px-6 py-3 border-t stitched-border border-black/10" style={{ ['--tw-border-opacity']: 0.5 }}>
-                  <a href="#" className="flex items-center gap-2 text-sm font-medium text-text-light/70 hover:text-primary transition-colors group"><span className="material-symbols-outlined text-xl">link</span><span className="border-b border-dashed border-text-light/40 group-hover:border-primary/80 transition-colors">View Source</span></a>
-                </div>
-              </div>
-
-              {/* Question 3 */}
-              <div className="bg-surface-light/80 backdrop-blur-sm rounded-2xl shadow-soft noise-texture">
-                <div className="p-6">
-                  <div className="flex items-start gap-6">
-                    <span className="flex-shrink-0 text-primary font-sans font-bold text-xl">3.</span>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-sans font-bold text-text-light">Which city is considered the birthplace of the Renaissance?</h3>
-                      <p className="text-sm text-text-light/70 mt-1">Multiple Choice Question</p>
-                      <div className="mt-4 space-y-3">
-                        {['Rome','Venice','Florence','Milan'].map((opt, idx) => (
-                          <label key={idx} className="flex items-center p-3 rounded-xl bg-background-light hover:bg-primary/10 transition-colors cursor-pointer ring-1 ring-inset ring-transparent hover:ring-primary">
-                            <input type="radio" name="q3" className="h-5 w-5 text-primary focus:ring-primary border-black/20 bg-transparent" />
-                            <span className="ml-4 text-base text-text-light">{opt}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="px-6 py-3 border-t stitched-border border-black/10" style={{ ['--tw-border-opacity']: 0.5 }}>
-                  <div className="flex items-center justify-between">
-                    <a href="#" className="flex items-center gap-2 text-sm font-medium text-text-light/70 hover:text-primary transition-colors group"><span className="material-symbols-outlined text-xl">link</span><span className="border-b border-dashed border-text-light/40 group-hover:border-primary/80 transition-colors">View Source</span></a>
-                    <button onClick={() => setShowAnswer3(v => !v)} className="flex items-center gap-2 text-sm font-medium text-analogous-1 hover:text-analogous-1/80 transition-colors"><span className="material-symbols-outlined text-xl">{showAnswer3 ? 'visibility_off' : 'visibility'}</span><span>{showAnswer3 ? 'Hide Answer' : 'Show Answer'}</span></button>
-                  </div>
-                  {showAnswer3 && (
-                    <div className="mt-3 pt-3 border-t stitched-border border-black/10" style={{ ['--tw-border-opacity']: 0.5 }}>
-                      <p className="text-base font-sans font-medium text-text-light">Correct Answer: <span className="font-body font-normal">c) Florence</span></p>
-                      <p className="mt-2 text-base text-text-light/80">Explanation: Florence, with its wealthy patrons like the Medici family and a concentration of brilliant artists and thinkers, is widely regarded as the cradle of the Renaissance.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-10 flex justify-end">
-              <Link to="/score">
-                <button className="flex items-center gap-2 rounded-2xl bg-primary px-6 py-3 font-sans text-base font-bold text-white shadow-soft-lg transition-all hover:bg-primary/90 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background-light noise-texture">
-                  <span className="material-symbols-outlined">send</span>
-                  <span>Submit Quiz</span>
-                </button>
-              </Link>
-            </div>
-          </div>
-        </main>
       </div>
-    </div>
+
+      <div className="flex flex-col min-h-screen relative z-10">
+        <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/10 border-b border-white/20">
+            <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center justify-between h-16">
+                <div className="flex items-center gap-4">
+                  <img src={logo} alt="NotesQuest" className="h-8 w-8 object-contain" />
+                  <h1 className="font-sans text-xl font-bold text-white">NotesQuest</h1>
+                </div>
+                <div className="flex items-center gap-4">
+                  <Link to="/upload" className="px-6 py-2 text-sm font-bold bg-white/20 backdrop-blur-sm text-white border border-white/30 rounded-lg hover:bg-white/30 transition-all duration-300">Home</Link>
+                  <Link to="/history" className="px-6 py-2 text-sm font-bold bg-white/20 backdrop-blur-sm text-white border border-white/30 rounded-lg hover:bg-white/30 transition-all duration-300">History</Link>
+                  <ProfileIcon />
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <main className="flex-1">
+            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+              <div className="max-w-3xl mx-auto">
+                <div className="flex items-center text-sm text-gray-300 mb-8">
+                  <a className="font-sans hover:text-blue-400" href="#">Quiz</a>
+                  <span className="mx-2">/</span>
+                  <span className="font-sans font-medium text-white">{quizTitle}</span>
+                </div>
+
+                <h1 className="font-sans text-3xl md:text-4xl font-bold text-white mb-4">Quiz: {quizTitle}</h1>
+                <p className="text-base text-gray-300 mb-8">Test your knowledge on the key concepts from the chapter.</p>
+
+                <div className="space-y-6">
+                  {questions.length > 0 ? questions.map((q, idx) => (
+                    <div key={idx} className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-6 shadow-2xl">
+                      <div className="flex items-start gap-6">
+                        <span className="flex-shrink-0 text-blue-400 font-sans font-bold text-xl">{q.id}.</span>
+                        <div className="flex-1">
+                          <h3 className="text-lg font-sans font-bold text-white mb-4">{q.question}</h3>
+                          <div className="space-y-3">
+                            {['A', 'B', 'C', 'D'].map(letter => (
+                              <label key={letter} className="flex items-center p-3 rounded-xl backdrop-blur-sm bg-white/5 hover:bg-white/10 transition-colors cursor-pointer border border-white/20 hover:border-white/40">
+                                <input 
+                                  type="radio" 
+                                  name={`q${q.id}`}
+                                  value={letter}
+                                  onChange={() => setAnswers({...answers, [q.id]: letter})}
+                                  className="h-5 w-5 text-blue-400 focus:ring-blue-400 bg-gray-700 border-gray-600" 
+                                />
+                                <span className="ml-4 text-base text-gray-300">{letter}) {q.options[letter]}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-4 pt-4 border-t border-gray-600">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-500">Question {q.id} of {questions.length}</span>
+                          <button onClick={() => {
+                            const showKey = `showAnswer${q.id}`;
+                            setAnswers({...answers, [showKey]: !answers[showKey]});
+                          }} className="flex items-center gap-2 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors">
+                            <span className="material-symbols-outlined text-xl">{answers[`showAnswer${q.id}`] ? 'visibility_off' : 'visibility'}</span>
+                            <span>{answers[`showAnswer${q.id}`] ? 'Hide Answer' : 'Show Answer'}</span>
+                          </button>
+                        </div>
+                        {answers[`showAnswer${q.id}`] && (
+                          <div className="mt-3 pt-3 border-t border-gray-600">
+                            <p className="text-base font-sans font-medium text-white">Correct Answer: <span className="font-body font-normal text-gray-300">{q.correct}) {q.options[q.correct]}</span></p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )) : (
+                    <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl p-8 text-center shadow-2xl">
+                      <p className="text-gray-400">No quiz questions available yet.</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-10 flex justify-end">
+                  <button onClick={submitQuiz} className="flex items-center gap-2 rounded-full h-12 px-8 font-sans text-base font-medium bg-white text-gray-900 hover:bg-white/90 transition-all transform hover:scale-105 shadow-lg">
+                    <span className="material-symbols-outlined">send</span>
+                    <span>Submit Quiz</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
   );
 }
