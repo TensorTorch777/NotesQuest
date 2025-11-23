@@ -20,28 +20,27 @@ app.set('trust proxy', 1);
 /* =========================
    CORS (place FIRST)
    ========================= */
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:5175',
-  (process.env.FRONTEND_URL || '').trim(), // e.g. https://notes-quest.vercel.app
-].filter(Boolean);
-
-const corsOptions = {
-  origin(origin, cb) {
-    // allow same-origin, curl/Postman (no origin), and explicit allowlist
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-    return cb(new Error(`CORS blocked for origin: ${origin}`));
-  },
+app.use(cors({
+  origin: [
+    process.env.FRONTEND_URL || 'http://localhost:5173',
+    'http://localhost:5173',
+    'http://localhost:5175'
+  ],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  preflightContinue: false,
-  optionsSuccessStatus: 204,
-};
-
-app.use(cors(corsOptions));
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
 // Ensure every preflight gets the right headers
-app.options('*', cors(corsOptions));
+app.options('*', cors({
+  origin: [
+    process.env.FRONTEND_URL || 'http://localhost:5173',
+    'http://localhost:5173',
+    'http://localhost:5175'
+  ],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
 
 /* =========================
    Security headers (after CORS)
@@ -99,7 +98,11 @@ app.use((err, req, res, next) => {
     return res.status(403).json({
       error: 'CORS_ERROR',
       message: err.message,
-      allowedOrigins,
+      allowedOrigins: [
+        process.env.FRONTEND_URL || 'http://localhost:5173',
+        'http://localhost:5173',
+        'http://localhost:5175'
+      ],
     });
   }
 
@@ -128,15 +131,14 @@ const startServer = async () => {
     await connectDB();
 
     app.listen(PORT, () => {
+      const env = process.env.NODE_ENV || 'development';
+      const frontend = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const ai = process.env.AI_SERVICE_URL || 'http://localhost:8000';
       console.log(`🚀 NoteQuest Backend running on port ${PORT}`);
-      console.log(`📚 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(
-        `🔗 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`
-      );
-      console.log(
-        `🤖 AI Service URL: ${process.env.AI_SERVICE_URL || 'http://localhost:8000'}`
-      );
-      console.log(`✅ CORS allowed origins: ${allowedOrigins.join(', ') || '(none)'}`);
+      console.log(`📚 Environment: ${env}`);
+      console.log(`🔗 Frontend URL: ${frontend}`);
+      console.log(`🤖 AI Service URL: ${ai}`);
+      console.log(`✅ CORS allowed origins: ${[frontend, 'http://localhost:5173', 'http://localhost:5175'].join(', ')}`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

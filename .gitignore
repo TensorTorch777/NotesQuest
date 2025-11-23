@@ -1,54 +1,21 @@
-# OS / editors
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-# Python
-.venv/
+node_modules
+# Python cache
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-ai-service/__pycache__/
+*.py[cod]
 
-# Node
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Model weights / checkpoints – NEVER commit
+*.safetensors
+*.bin
+*.pt
+*.onnx
+*.ckpt
+checkpoint-*/
 
-# Builds
-dist/
-build/
-.esbuild/
-
-# Frontend
-app/node_modules/
-app/dist/
-app/.vercel/
-
-# Backend
-backend/node_modules/
-backend/dist/
-
-# Data / misc
-chroma_db/
-docker/
-*.sqlite
-*.db
-*.log
-
-# Models / weights (HUGE — never commit)
-models/
-ai-service/models/
-**/*.safetensors
-**/*.bin
-**/*.pt
-
-# Secrets
+# Local data dumps
+data/
+logs/
+# Local env
 .env
-.env.*
-app/.env
-backend/.env
+
+# Local vector DB
+ai-service/chroma_db/

@@ -102,3 +102,5 @@ print("Your RTX 5080 is ready for NoteQuest AI! 🚀")
 
 
 
+
+

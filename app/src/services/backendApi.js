@@ -307,6 +307,14 @@ class BackendAPI {
         try {
           const chunk = JSON.parse(data);
 
+          // Ignore sentinel DONE tokens if provider sends them in text
+          const textVal = (chunk.text ?? '').trim();
+
+          if (textVal === '[DONE]') {
+            // Treat as stream completion
+            return { thinking: thinkingText, message: messageText, chatId: finalChatId };
+          }
+
           if (event === 'thinking' || chunk.type === 'thinking' || chunk.type === 'thinking_update') {
             thinkingText = chunk.text ?? thinkingText;
             onThinkingToken?.(chunk.token ?? '', thinkingText);
@@ -322,8 +330,11 @@ class BackendAPI {
           }
         } catch {
           // If backend ever sends plain text, append it
-          messageText += data;
-          onToken?.('', messageText);
+          const plain = (data || '').trim();
+          if (plain && plain !== '[DONE]') {
+            messageText += (messageText ? '' : '') + data;
+            onToken?.('', messageText);
+          }
         }
       }
     }
