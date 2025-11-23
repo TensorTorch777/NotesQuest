@@ -8,7 +8,7 @@ const Document = require('../models/Document');
 const Summary = require('../models/Summary');
 const Quiz = require('../models/Quiz');
 const Flashcard = require('../models/Flashcard');
-const auth = require('../middleware/auth');
+// Auth removed - no login required
 const OCRProcessor = require('../utils/ocrProcessor');
 const aiService = require('../utils/aiServiceClient');
 
@@ -264,8 +264,8 @@ router.get('/history', async (req, res) => {
   }
 });
 
-// Get user's documents
-router.get('/my-documents', auth, async (req, res) => {
+// Get user's documents (no auth required)
+router.get('/my-documents', async (req, res) => {
   try {
     const documents = await Document.find({ userId: req.user.id })
       .sort({ createdAt: -1 })
@@ -414,11 +414,10 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Get specific document - MUST be AFTER DELETE /:id
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const document = await Document.findOne({ 
-      _id: req.params.id, 
-      userId: req.user.id 
+      _id: req.params.id
     });
 
     if (!document) {

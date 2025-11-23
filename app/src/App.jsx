@@ -2,7 +2,6 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import Landing from './pages/landing';
-import Login from './pages/login';
 import Upload from './pages/upload';
 import Quiz from './pages/quiz';
 import Score from './pages/score';
@@ -15,7 +14,6 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
-      <Route path="/login" element={<Login />} />
       <Route path="/upload" element={<Upload />} />
       <Route path="/quiz" element={<Quiz />} />
       <Route path="/score" element={<Score />} />

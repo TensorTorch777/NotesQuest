@@ -32,13 +32,10 @@ class BackendAPI {
     return localStorage.getItem('authToken');
   }
 
-  /** Create request headers */
-  getHeaders(includeAuth = true) {
+  /** Create request headers (auth removed) */
+  getHeaders(includeAuth = false) {
     const headers = { 'Content-Type': 'application/json' };
-    if (includeAuth) {
-      const token = this.getAuthToken();
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-    }
+    // Auth removed - no token required
     return headers;
   }
 
@@ -131,7 +128,7 @@ class BackendAPI {
 
     const resp = await fetch(`${this.baseURL}/documents/upload`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${this.getAuthToken()}` },
+      // No auth headers needed
       body: formData,
     });
     return this.handleResponse(resp);

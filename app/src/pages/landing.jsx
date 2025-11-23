@@ -78,12 +78,7 @@ const Landing = () => {
               <h2 className="text-xl font-bold text-white">NOTESQUEST</h2>
             </div>
             <div className="flex items-center gap-4 animate-fade-in-right">
-              <Link to="/login" className="hidden md:inline-block">
-                <button className="btn-secondary">
-                  Log in
-                </button>
-              </Link>
-              <Link to="/login" className="hidden md:inline-block">
+              <Link to="/upload" className="hidden md:inline-block">
                 <button className="btn-primary hover-glow animate-pulse-slow">
                   Get Started
                 </button>
@@ -141,7 +136,7 @@ const Landing = () => {
           
           {/* CTA Button */}
           <div className="animate-fade-in-up delay-300">
-            <Link to="/login">
+            <Link to="/upload">
               <button className="bg-white text-black font-bold text-lg px-8 py-4 rounded-lg hover:bg-gray-100 transition-colors shadow-lg hover-lift hover-glow">
                 Get Started for Free
               </button>
@@ -448,7 +443,7 @@ const Landing = () => {
           <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto animate-fade-in-up delay-200">
             Join thousands of students who are already studying smarter with NotesQuest
           </p>
-          <Link to="/login">
+          <Link to="/upload">
             <button className="bg-white text-black font-bold text-lg px-8 py-4 rounded-lg hover:bg-gray-100 transition-colors shadow-lg hover-lift hover-glow animate-fade-in-up delay-300">
               Get Started for Free
             </button>

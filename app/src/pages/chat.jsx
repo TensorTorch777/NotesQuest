@@ -24,24 +24,9 @@ export default function Chat() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Fetch current user on mount
+  // User fetching removed - no login required
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const token = localStorage.getItem('authToken');
-        if (token) {
-          const response = await backendAPI.getCurrentUser();
-          if (response.success && response.user) {
-            setUser(response.user);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch user:', err);
-        // Silently fail - user might not be logged in
-      }
-    };
-    
-    fetchUser();
+    // No user fetching needed
   }, []);
 
   // Load chats on mount

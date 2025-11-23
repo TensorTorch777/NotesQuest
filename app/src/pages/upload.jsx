@@ -28,24 +28,9 @@ export default function Upload() {
   // Combined loading state
   const isLoading = isProcessingDoc || isGeneratingSummary || isGeneratingQuiz || isGeneratingFlashcards;
   
-  // Fetch current user on mount
+  // User fetching removed - no login required
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const token = localStorage.getItem('authToken');
-        if (token) {
-          const response = await backendAPI.getCurrentUser();
-          if (response.success && response.user) {
-            setUser(response.user);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch user:', err);
-        // Silently fail - user might not be logged in
-      }
-    };
-    
-    fetchUser();
+    // No user fetching needed
   }, []);
 
   // Get time-based greeting

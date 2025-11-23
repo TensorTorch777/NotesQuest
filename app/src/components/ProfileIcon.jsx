@@ -8,23 +8,9 @@ export default function ProfileIcon() {
   const menuRef = useRef(null);
   const navigate = useNavigate();
 
-  // Fetch current user on mount
+  // User fetching removed - no login required
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const token = localStorage.getItem('authToken');
-        if (token) {
-          const response = await backendAPI.getCurrentUser();
-          if (response.success && response.user) {
-            setUser(response.user);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch user:', err);
-      }
-    };
-    
-    fetchUser();
+    // No user fetching needed - ProfileIcon hidden when no auth
   }, []);
 
   // Close menu when clicking outside
@@ -73,39 +59,9 @@ export default function ProfileIcon() {
     return colors[colorIndex];
   };
 
-  const handleLogout = async () => {
-    try {
-      await backendAPI.logout();
-      navigate('/login');
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Even if API call fails, clear local storage and redirect
-      localStorage.removeItem('authToken');
-      navigate('/login');
-    }
-  };
-
-  const handleDeleteProfile = async () => {
-    if (!window.confirm('Are you sure you want to delete your profile? This action cannot be undone.')) {
-      return;
-    }
-
-    if (!window.confirm('This will permanently delete your account and all your data. Are you absolutely sure?')) {
-      return;
-    }
-
-    try {
-      await backendAPI.deleteProfile();
-      localStorage.removeItem('authToken');
-      navigate('/login');
-    } catch (error) {
-      console.error('Delete profile error:', error);
-      alert('Failed to delete profile. Please try again.');
-    }
-  };
-
-  if (!user) {
-    return null; // Don't show anything if user is not loaded
+  // Auth removed - ProfileIcon hidden
+  if (true) {
+    return null; // Don't show profile icon - no auth system
   }
 
   return (

@@ -5,14 +5,14 @@ const Summary = require('../models/Summary');
 const Quiz = require('../models/Quiz');
 const Flashcard = require('../models/Flashcard');
 const Chat = require('../models/Chat');
-const auth = require('../middleware/auth');
+// Auth removed - no login required
 
 const router = express.Router();
 
-// Get user dashboard data
-router.get('/dashboard', auth, async (req, res) => {
+// Get user dashboard data (no auth required)
+router.get('/dashboard', async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = null; // No user tracking
 
     // Get counts
     const [
@@ -22,11 +22,11 @@ router.get('/dashboard', auth, async (req, res) => {
       flashcardCount,
       recentDocuments
     ] = await Promise.all([
-      Document.countDocuments({ userId }),
-      Summary.countDocuments({ userId }),
-      Quiz.countDocuments({ userId }),
-      Flashcard.countDocuments({ userId }),
-      Document.find({ userId })
+      Document.countDocuments({}),
+      Summary.countDocuments({}),
+      Quiz.countDocuments({}),
+      Flashcard.countDocuments({}),
+      Document.find({})
         .sort({ createdAt: -1 })
         .limit(5)
         .select('title fileType createdAt')
@@ -45,9 +45,7 @@ router.get('/dashboard', auth, async (req, res) => {
       success: true,
       dashboard: {
         usage: usageStats,
-        recentDocuments,
-        subscription: req.user.subscription,
-        preferences: req.user.preferences
+        recentDocuments
       }
     });
 
@@ -60,10 +58,10 @@ router.get('/dashboard', auth, async (req, res) => {
   }
 });
 
-// Get user statistics
-router.get('/stats', auth, async (req, res) => {
+// Get user statistics (no auth required)
+router.get('/stats', async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = null; // No user tracking
     const { period = '30d' } = req.query;
 
     // Calculate date range
@@ -92,19 +90,15 @@ router.get('/stats', auth, async (req, res) => {
       flashcardsGenerated
     ] = await Promise.all([
       Document.countDocuments({ 
-        userId, 
         createdAt: { $gte: startDate } 
       }),
       Summary.countDocuments({ 
-        userId, 
         createdAt: { $gte: startDate } 
       }),
       Quiz.countDocuments({ 
-        userId, 
         createdAt: { $gte: startDate } 
       }),
       Flashcard.countDocuments({ 
-        userId, 
         createdAt: { $gte: startDate } 
       })
     ]);
@@ -113,7 +107,6 @@ router.get('/stats', auth, async (req, res) => {
     const activityTimeline = await Document.aggregate([
       {
         $match: {
-          userId: userId,
           createdAt: { $gte: startDate }
         }
       },
@@ -142,11 +135,7 @@ router.get('/stats', auth, async (req, res) => {
           quizzesGenerated,
           flashcardsGenerated
         },
-        timeline: activityTimeline,
-        user: {
-          subscription: req.user.subscription,
-          usage: req.user.usage
-        }
+        timeline: activityTimeline
       }
     });
 
@@ -159,14 +148,14 @@ router.get('/stats', auth, async (req, res) => {
   }
 });
 
-// Get user history
-router.get('/history', auth, async (req, res) => {
+// Get user history (no auth required)
+router.get('/history', async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = null; // No user tracking
     const { page = 1, limit = 10, type = 'all' } = req.query;
 
     const skip = (page - 1) * limit;
-    let query = { userId };
+    let query = {}; // No user filtering
 
     // Filter by type if specified
     if (type !== 'all') {
@@ -207,20 +196,13 @@ router.get('/history', auth, async (req, res) => {
   }
 });
 
-// Delete user account
-router.delete('/account', auth, async (req, res) => {
+// Delete user account (disabled - no auth)
+router.delete('/account', async (req, res) => {
   try {
-    const userId = req.user._id;
-
-    // Delete all user data
-    await Promise.all([
-      Document.deleteMany({ userId }),
-      Summary.deleteMany({ userId }),
-      Quiz.deleteMany({ userId }),
-      Flashcard.deleteMany({ userId }),
-      Chat.deleteMany({ userId }),
-      User.findByIdAndDelete(userId)
-    ]);
+    // Account deletion disabled - no user system
+    return res.status(501).json({ 
+      error: 'Account deletion not available - no authentication system' 
+    });
 
     res.json({
       success: true,
